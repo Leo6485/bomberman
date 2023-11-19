@@ -31,7 +31,7 @@ typedef struct Bomb{
     float indexLeft;
     int isActive;
     int time;
-}Bomb;
+} Bomb;
 
 typedef struct {
     Vector2 pos;
@@ -75,25 +75,29 @@ void gameOver();
 void mainMenu();
 void debug(game *g);
 
-short int mapa[NUMTILES_H][NUMTILES_W];
-
-void initBombs(game *g, int n) {
-    for(int i = 0; i < n; i++) {
-        g->player.bombs[i].explosion_right = (Rectangle){0, 0, 0, 0};
-        g->player.bombs[i].explosion_left = (Rectangle){0, 0, 0, 0};
-        g->player.bombs[i].explosion_up = (Rectangle){0, 0, 0, 0};
-        g->player.bombs[i].explosion_down = (Rectangle){0, 0, 0, 0};
-        g->player.bombs[i].isActive = 0;
-        g->player.bombs[i].time = 0;
-    }
-}
+// Funções da bomba
 void draw_bomb(game *g);
 void update_bomb(game *g, short int mapa[][NUMTILES_W]);
 
 
+Vector2 getCoords(int x, int y) {
+    float coordX = x * TILESIZE + scene.x;
+    float coordY = y * TILESIZE + scene.y;
+    Vector2 coords = {coordX, coordY};
+    return coords;
+}
+
+Vector2Int getIndex(float x, float y) {
+    int indexX = ((x + TILESIZE / 2) - scene.x) / TILESIZE;
+    int indexY = ((y + TILESIZE / 2) - scene.y) / TILESIZE;
+    Vector2Int index = {indexX, indexY};
+    return index;
+}
+
+
 int main() {
     game g = {
-        .player = {{scene.x, scene.y}, TILESIZE, 0.0, 0.0, 2.5, 0.5, 0, 0, 5, 4, 0.25, {{},{},{},{},{},{},{},{},{},{}}}
+        .player = {{scene.x, scene.y}, TILESIZE, 0.0, 0.0, 2.5, 0.5, 0, 0, 5, 2, 0.25, {{},{},{},{},{},{},{},{},{},{}}}
     };
     
     initMapa();
@@ -107,7 +111,7 @@ int main() {
             }
         }
     }
-    mapa[2][2] = 2;
+
     InitWindow(SCREEN_W, SCREEN_H, "Projeto");
     SetTargetFPS(60);
 
@@ -127,8 +131,85 @@ int main() {
 }
 
 
+void updateGame(game *g) {
+    updateMove(g);
+    DrawRectangle(scene.x, scene.y, sceneWidth, sceneHeight, GREEN);
 
+    for (int i = 0; i < NUMTILES_H; i++) {
+        for (int j = 0; j < NUMTILES_W; j++) {
+            if (mapa[i][j] == 1) {
+                short int tileX = scene.x + j * TILESIZE;
+                short int tileY = scene.y + i * TILESIZE;
+                DrawRectangle(tileX, tileY, TILESIZE, TILESIZE, DARKGRAY);
+            } else if (mapa[i][j] == 2) {
+                short int tileX = scene.x + j * TILESIZE;
+                short int tileY = scene.y + i * TILESIZE;
+                DrawRectangle(tileX, tileY, TILESIZE, TILESIZE, WHITE);
+            }
+        }
+    }
 
+    debug(g);
+
+    BeginDrawing();
+
+    ClearBackground(BLACK);
+
+    for (int x = 0; x <= sceneWidth; x += TILESIZE) {
+        DrawLine(scene.x + x, scene.y, scene.x + x, SCREEN_H / 2 + sceneHeight / 2, DARKGRAY);
+    }
+
+    for (int y = 0; y <= sceneHeight; y += TILESIZE) {
+        DrawLine(scene.x, scene.y + y, SCREEN_W / 2 + sceneWidth / 2, scene.y + y, DARKGRAY);
+    }
+
+            update_bomb(g, mapa);
+            draw_bomb(g);
+    prevCollision(g, mapa);
+    DrawRectangle(g->player.pos.x, g->player.pos.y, g->player.size, g->player.size, BLUE);
+
+    EndDrawing();
+}
+
+void updateMove(game *g) {
+    getLastKey();
+    if (lastKey == KEY_W && g->player.pos.y > scene.y)
+        g->player.velY -= g->player.acc;
+    else if (g->player.pos.y <= scene.y)
+        g->player.pos.y = scene.y;
+
+    if (lastKey == KEY_S && g->player.pos.y < sceneHeight + scene.y - g->player.size)
+        g->player.velY += g->player.acc;
+    else if (g->player.pos.y >= sceneHeight + scene.y - g->player.size)
+        g->player.pos.y = sceneHeight + scene.y - g->player.size;
+
+    if (lastKey == KEY_A && g->player.pos.x >= scene.x)
+        g->player.velX -= g->player.acc;
+    else if (g->player.pos.x < scene.x)
+        g->player.pos.x = 0 + scene.x;
+
+    if (lastKey == KEY_D && g->player.pos.x <= sceneWidth + scene.x - g->player.size)
+        g->player.velX += g->player.acc;
+    else if (g->player.pos.x >= sceneWidth + scene.x - g->player.size)
+        g->player.pos.x = sceneWidth + scene.x - g->player.size;
+
+    g->player.pos.x += g->player.velX;
+    g->player.pos.y += g->player.velY;
+
+    g->player.velX *= g->player.fric;
+    g->player.velY *= g->player.fric;
+}
+
+void initBombs(game *g, int n) {
+    for(int i = 0; i < n; i++) {
+        g->player.bombs[i].explosion_right = (Rectangle){0, 0, 0, 0};
+        g->player.bombs[i].explosion_left = (Rectangle){0, 0, 0, 0};
+        g->player.bombs[i].explosion_up = (Rectangle){0, 0, 0, 0};
+        g->player.bombs[i].explosion_down = (Rectangle){0, 0, 0, 0};
+        g->player.bombs[i].isActive = 0;
+        g->player.bombs[i].time = 0;
+    }
+}
 
 void draw_bomb(game *g){
     for(int i = 0; i < g->player.num_bombs; i++) { 
@@ -253,7 +334,6 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
                 
                 Vector2Int bombIndex = getIndex(g->player.bombs[i].pos.x, g->player.bombs[i].pos.y);
                 mapa[(int)bombIndex.y][(int)(g->player.bombs[i].indexRight)] = 0; //Extremidade da explosão
-                mapa[(int)bombIndex.y][(int)(g->player.bombs[i].indexLeft)] = 0;
                 mapa[(int)(g->player.bombs[i].indexTop)][(int)bombIndex.x] = 0;
                 mapa[(int)(g->player.bombs[i].indexBottom)][(int)bombIndex.x] = 0;
 
@@ -270,6 +350,7 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
 
 
 
+short int mapa[NUMTILES_H][NUMTILES_W];
 
 void initMapa() {
     for (int i = 0; i < NUMTILES_H; i++) {
@@ -281,20 +362,6 @@ void initMapa() {
             }
         }
     }
-}
-
-Vector2 getCoords(int x, int y) {
-    float coordX = x * TILESIZE + scene.x;
-    float coordY = y * TILESIZE + scene.y;
-    Vector2 coords = {coordX, coordY};
-    return coords;
-}
-
-Vector2Int getIndex(float x, float y) {
-    int indexX = ((x + TILESIZE / 2) - scene.x) / TILESIZE;
-    int indexY = ((y + TILESIZE / 2) - scene.y) / TILESIZE;
-    Vector2Int index = {indexX, indexY};
-    return index;
 }
 
 void prevCollision(game *g, short int mapa[][NUMTILES_W]) {
@@ -378,74 +445,9 @@ void getLastKey() {
     }
 }
 
-void updateMove(game *g) {
-    getLastKey();
-    if (lastKey == KEY_W && g->player.pos.y > scene.y)
-        g->player.velY -= g->player.acc;
-    else if (g->player.pos.y <= scene.y)
-        g->player.pos.y = scene.y;
 
-    if (lastKey == KEY_S && g->player.pos.y < sceneHeight + scene.y - g->player.size)
-        g->player.velY += g->player.acc;
-    else if (g->player.pos.y >= sceneHeight + scene.y - g->player.size)
-        g->player.pos.y = sceneHeight + scene.y - g->player.size;
 
-    if (lastKey == KEY_A && g->player.pos.x >= scene.x)
-        g->player.velX -= g->player.acc;
-    else if (g->player.pos.x < scene.x)
-        g->player.pos.x = 0 + scene.x;
 
-    if (lastKey == KEY_D && g->player.pos.x <= sceneWidth + scene.x - g->player.size)
-        g->player.velX += g->player.acc;
-    else if (g->player.pos.x >= sceneWidth + scene.x - g->player.size)
-        g->player.pos.x = sceneWidth + scene.x - g->player.size;
-
-    g->player.pos.x += g->player.velX;
-    g->player.pos.y += g->player.velY;
-
-    g->player.velX *= g->player.fric;
-    g->player.velY *= g->player.fric;
-}
-
-void updateGame(game *g) {
-    updateMove(g);
-    DrawRectangle(scene.x, scene.y, sceneWidth, sceneHeight, GREEN);
-
-    for (int i = 0; i < NUMTILES_H; i++) {
-        for (int j = 0; j < NUMTILES_W; j++) {
-            if (mapa[i][j] == 1) {
-                short int tileX = scene.x + j * TILESIZE;
-                short int tileY = scene.y + i * TILESIZE;
-                DrawRectangle(tileX, tileY, TILESIZE, TILESIZE, DARKGRAY);
-            } else if (mapa[i][j] == 2) {
-                short int tileX = scene.x + j * TILESIZE;
-                short int tileY = scene.y + i * TILESIZE;
-                DrawRectangle(tileX, tileY, TILESIZE, TILESIZE, WHITE);
-            }
-        }
-    }
-
-    debug(g);
-
-    BeginDrawing();
-
-    ClearBackground(BLACK);
-
-    for (int x = 0; x <= sceneWidth; x += TILESIZE) {
-        DrawLine(scene.x + x, scene.y, scene.x + x, SCREEN_H / 2 + sceneHeight / 2, DARKGRAY);
-    }
-
-    for (int y = 0; y <= sceneHeight; y += TILESIZE) {
-        DrawLine(scene.x, scene.y + y, SCREEN_W / 2 + sceneWidth / 2, scene.y + y, DARKGRAY);
-    }
-
-            update_bomb(g, mapa);
-            draw_bomb(g);
-    prevCollision(g, mapa);
-    DrawRectangle(g->player.pos.x, g->player.pos.y, g->player.size, g->player.size, BLUE);
-
-    EndDrawing();
-}
 
 void mainMenu() {
     BeginDrawing();
