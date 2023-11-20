@@ -13,11 +13,6 @@ const short int sceneHeight = TILESIZE * NUMTILES_H;
 
 const Vector2 scene = {(SCREEN_W - sceneWidth) / 2, (SCREEN_H - sceneHeight) / 2};
 
-typedef struct {
-    int maxBombs;
-    int bombLength;
-    int bombDelay;
-} playerProps;
 
 typedef struct Bomb{
     Rectangle pos;
@@ -30,17 +25,18 @@ typedef struct Bomb{
     float indexBottom;
     float indexLeft;
     int isActive;
+    int collisionActive;
     int time;
 } Bomb;
 
 typedef struct {
     Vector2 pos;
     float size;
+    int life;
     float velX;
     float velY;
     float acc;
     float fric;
-    int draw_bomb;
     int put_bomb;
     int num_bombs;
     int bomb_distance;
@@ -60,7 +56,7 @@ typedef struct {
 KeyboardKey lastKey = KEY_NULL;
 
 // Funções relacionadas ao mapa
-void initMapa();
+void initRandomMap();
 Vector2 getCoords(int x, int y);
 Vector2Int getIndex(float x, float y);
 
@@ -78,6 +74,8 @@ void debug(game *g);
 // Funções da bomba
 void draw_bomb(game *g);
 void update_bomb(game *g, short int mapa[][NUMTILES_W]);
+void bombDamage(game *g);
+void bombCollision(game *g);
 
 
 Vector2 getCoords(int x, int y) {
@@ -95,30 +93,51 @@ Vector2Int getIndex(float x, float y) {
 }
 
 
+short int mapa[NUMTILES_H][NUMTILES_W] = {{0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0},
+                                          {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+                                          {2, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 2, 0, 0},
+                                          {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+                                          {0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 2},
+                                          {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+                                          {0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0},
+                                          {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+                                          {0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 0, 0, 2, 0, 0},
+                                          {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+                                          {2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0},
+                                          {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+                                          {2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2},
+                                          {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+                                          {0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 0, 0, 2},
+                                         };
+
 int main() {
     game g = {
-        .player = {{scene.x, scene.y}, TILESIZE, 0.0, 0.0, 2.5, 0.5, 0, 0, 5, 2, 0.25, {{},{},{},{},{},{},{},{},{},{}}}
-    };
-    
-    initMapa();
-
-    for (int i = 0; i < NUMTILES_H; i += 2) {
-        int x;
-        for (int j = 0; j < NUMTILES_W; j += 2) {
-            x = GetRandomValue(0, 1);
-            if (x && (i > 1 || j > 1)) {
-                mapa[i][j] = 2;
-            }
+            .player = {
+            .pos = {scene.x, scene.y}, 
+            .size = TILESIZE,
+            .life = 1, 
+            .velX = 0.0,
+            .velY = 0.0,
+            .acc = 2.5,
+            .fric = 0.5,
+            .put_bomb = 0,
+            .num_bombs = 5,
+            .bomb_distance = 2,
+            .bomb_vel = 0.25,
+            .bombs = {}
         }
-    }
+    };
+ 
+    //initRandomMap(); //Cria um mapa aleatório
 
     InitWindow(SCREEN_W, SCREEN_H, "Projeto");
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
+
         if(IsKeyDown(KEY_ENTER)){
             mainMenu();
-        } else if(IsKeyDown(KEY_G)) {
+        } else if(!g.player.life) {
             gameOver();
         } else {
             updateGame(&g);
@@ -163,8 +182,8 @@ void updateGame(game *g) {
         DrawLine(scene.x, scene.y + y, SCREEN_W / 2 + sceneWidth / 2, scene.y + y, DARKGRAY);
     }
 
-            update_bomb(g, mapa);
-            draw_bomb(g);
+    update_bomb(g, mapa);
+
     prevCollision(g, mapa);
     DrawRectangle(g->player.pos.x, g->player.pos.y, g->player.size, g->player.size, BLUE);
 
@@ -200,17 +219,15 @@ void updateMove(game *g) {
     g->player.velY *= g->player.fric;
 }
 
+//Inicia as bombas com os campos "isActive" e "collisionActive" igual a 0, para não pegar lixo de memória
 void initBombs(game *g, int n) {
     for(int i = 0; i < n; i++) {
-        g->player.bombs[i].explosion_right = (Rectangle){0, 0, 0, 0};
-        g->player.bombs[i].explosion_left = (Rectangle){0, 0, 0, 0};
-        g->player.bombs[i].explosion_up = (Rectangle){0, 0, 0, 0};
-        g->player.bombs[i].explosion_down = (Rectangle){0, 0, 0, 0};
         g->player.bombs[i].isActive = 0;
-        g->player.bombs[i].time = 0;
+        g->player.bombs[i].collisionActive = 0;
     }
 }
 
+//Desenha as bombas ativas
 void draw_bomb(game *g){
     for(int i = 0; i < g->player.num_bombs; i++) { 
         if(g->player.bombs[i].isActive == 1) {
@@ -223,23 +240,66 @@ void draw_bomb(game *g){
     }
 }
 
+void bombDamage(game *g) {
+    for(int i = 0; i < g->player.num_bombs; i++) { 
+        if(g->player.bombs[i].isActive == 1) {
+            
+            if (fabs(g->player.bombs[i].time - GetTime()) > 3 && fabs(g->player.bombs[i].time - GetTime()) < 5) {
+                short int Collision = 0;
+
+                //Se colidir com algum retângulo de explosão, a variável Collision terá um valor positivo
+                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_right, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
+                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_left, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
+                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_up, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
+                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_down, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
+
+                if(Collision) {
+                    g->player.life -= 1;
+                }
+            }
+        }
+    }
+}
+
+void bombCollision(game *g) {
+    for(int i = 0; i < g->player.num_bombs; i++) { 
+        if(g->player.bombs[i].isActive == 1) {
+            if(g->player.bombs[i].collisionActive == 0) {
+
+                //Se a colisão estiver desativada e o player ter saído de "dentro" da bomba, ative a colisão colocando um bloco "3" na matriz do mapa
+                if(!CheckCollisionRecs(g->player.bombs[i].pos, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size})) {
+                    Vector2Int bombIndex = getIndex(g->player.bombs[i].pos.x, g->player.bombs[i].pos.y);
+                    mapa[bombIndex.y][bombIndex.x] = 3;
+                }
+            }
+        }
+    }
+}
+
 void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
+
+    
+    draw_bomb(g);
+    bombDamage(g);
+    bombCollision(g);
+
+    
     if (IsKeyPressed(KEY_SPACE)) {
         g->player.put_bomb = 1;
     }
 
     for(int i = 0; i < 10; i++){
+
+        //Debuga as bombas
         if(g->player.bombs[i].isActive) {
             Vector2Int bombIndex = getIndex(g->player.bombs[i].pos.x, g->player.bombs[i].pos.y);
             char bombText[64];
 
-            //snprintf(bombText, sizeof(bombText), "Bomb[%d] max: %.2lf", i, g->player.bombs[i].maxRight);
-                    float indexRight = g->player.bombs[i].indexRight;
-            snprintf(bombText, sizeof(bombText), "Bomb[%d] Index: %d", i, (int)(indexRight + g->player.bomb_vel + 0.999));
-
-            DrawText(bombText, 10, 90 + i*30, 18, DARKGRAY);
+                snprintf(bombText, sizeof(bombText), "Bomb [%d]", i + 1);
+                DrawText(bombText, 10, 90 + i*30, 18, DARKGRAY);
         }
     }
+
 
     if (g->player.put_bomb == 1) {
         for (int i = 0; i < g->player.num_bombs; i++) {
@@ -280,12 +340,17 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
                 if (g->player.bombs[i].explosion_right.width < (g->player.bomb_distance + 1) * TILESIZE) { // Analisa se a largura da bomba é menor que a distância máxima
                     float indexRight = g->player.bombs[i].indexRight;
 
-                    int prevBlock = mapa[(int)bombIndex.y][(int)(indexRight + g->player.bomb_vel - 0.001)];
-                    int currentBlock = mapa[(int)bombIndex.y][(int)(indexRight + g->player.bomb_vel + 0.999)];
+                    int prevBlock = mapa[(int)bombIndex.y][(int)(indexRight)]; //Um bloco atrás da explosão
 
-                    if (prevBlock != 2 && currentBlock != 1 && (indexRight + g->player.bomb_vel + 0.999) <= NUMTILES_W) {
-                        g->player.bombs[i].indexRight += g->player.bomb_vel;
-                        g->player.bombs[i].explosion_right.width += TILESIZE * g->player.bomb_vel;
+                     /*
+                     Extremidade da explosão, exemplo (int)(4.99 + 1) será 5 ao converter para inteiro,
+                     quero que pare no bloco 5, ou seja, só irá parar ao atingir o bloco (int)(5 + 1) ou 6
+                     */
+                    int currentBlock = mapa[(int)bombIndex.y][(int)(indexRight + 1)];
+
+                    if (prevBlock != 2 && currentBlock != 1 && (indexRight + 1) < NUMTILES_W) {
+                        g->player.bombs[i].indexRight += g->player.bomb_vel; // aumenta o índice
+                        g->player.bombs[i].explosion_right.width += TILESIZE * g->player.bomb_vel; // aumenta o tamanho do retângulo da explosão
                     }
                 }
 
@@ -297,7 +362,7 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
                     int currentBlock = mapa[(int)bombIndex.y][(int)(indexLeft - g->player.bomb_vel)];
 
 
-                    if (prevBlock != 2 && currentBlock != 1 && indexLeft - g->player.bomb_vel >= -0) {
+                    if (prevBlock != 2 && currentBlock != 1 && indexLeft - g->player.bomb_vel >= 0) {
                         g->player.bombs[i].indexLeft -= g->player.bomb_vel;
                         g->player.bombs[i].explosion_left.width += TILESIZE * g->player.bomb_vel;
                         g->player.bombs[i].explosion_left.x -= TILESIZE * g->player.bomb_vel;
@@ -322,9 +387,9 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
                     float indexBottom = g->player.bombs[i].indexBottom;
 
                     int prevBlock = mapa[(int)(indexBottom + g->player.bomb_vel - 0.001)][(int)bombIndex.x];
-                    int currentBlock = mapa[(int)(indexBottom + g->player.bomb_vel + 0.999)][(int)bombIndex.x];
+                    int currentBlock = mapa[(int)(indexBottom + 1)][(int)bombIndex.x];
 
-                    if (prevBlock != 2 && currentBlock != 1 && (indexBottom + g->player.bomb_vel + 0.999) <= NUMTILES_H) {
+                    if (prevBlock != 2 && currentBlock != 1 && (indexBottom + 1) < NUMTILES_H) {
                         g->player.bombs[i].indexBottom += g->player.bomb_vel;
                         g->player.bombs[i].explosion_down.height += TILESIZE * g->player.bomb_vel;
                     }
@@ -333,10 +398,16 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
             } else if(fabs(g->player.bombs[i].time - GetTime()) > 3){
                 
                 Vector2Int bombIndex = getIndex(g->player.bombs[i].pos.x, g->player.bombs[i].pos.y);
-                mapa[(int)bombIndex.y][(int)(g->player.bombs[i].indexRight)] = 0; //Extremidade da explosão
+
+                mapa[(int)bombIndex.y][(int)(g->player.bombs[i].indexRight)] = 0; //Axtremidade da explosão para um bloco vazio na matriz, quebrando os blocos atingidos
+                mapa[(int)bombIndex.y][(int)(g->player.bombs[i].indexLeft)] = 0;
                 mapa[(int)(g->player.bombs[i].indexTop)][(int)bombIndex.x] = 0;
                 mapa[(int)(g->player.bombs[i].indexBottom)][(int)bombIndex.x] = 0;
+                
+                
+                mapa[bombIndex.y][bombIndex.x] = 0; //Atualiza a bomba na matriz para 0, desativando a colisão
 
+                g->player.bombs[i].collisionActive = 0;
                 g->player.bombs[i].isActive = 0;
 
 	    }
@@ -350,15 +421,22 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
 
 
 
-short int mapa[NUMTILES_H][NUMTILES_W];
-
-void initMapa() {
+void initRandomMap() {
     for (int i = 0; i < NUMTILES_H; i++) {
         for (int j = 0; j < NUMTILES_W; j++) {
             if (i % 2 && j % 2) {
                 mapa[i][j] = 1;
             } else {
                 mapa[i][j] = 0;
+            }
+        }
+    }
+    for (int i = 0; i < NUMTILES_H; i += 2) {
+        int x;
+        for (int j = 0; j < NUMTILES_W; j += 2) {
+            x = GetRandomValue(0, 1);
+            if (x && (i > 1 || j > 1)) {
+                mapa[i][j] = 2;
             }
         }
     }
@@ -369,7 +447,7 @@ void prevCollision(game *g, short int mapa[][NUMTILES_W]) {
 
     for (int y = playerIndex.y - 1; y <= playerIndex.y + 1; y++) {
         for (int x = playerIndex.x - 1; x <= playerIndex.x + 1; x++) {
-            if (mapa[y][x] >= 1 && x >= 0 && x <= NUMTILES_W) {
+            if (mapa[y][x] >= 1 && x >= 0 && x < NUMTILES_W && y >= 0 && y < NUMTILES_H) { //Blocos maiores ou iguais a 1 colidem
                 Vector2 coords = getCoords(x, y);
 
                 DrawCircle(coords.x + TILESIZE / 2, coords.y + TILESIZE / 2, 4, RED);
