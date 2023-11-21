@@ -9,6 +9,17 @@
 #define NUMTILES_W 15
 
 
+//------------------------------------------------------------------------------------
+//Variáveis globais
+//------------------------------------------------------------------------------------
+const short int sceneWidth = TILESIZE * NUMTILES_W;
+const short int sceneHeight = TILESIZE * NUMTILES_H;
+
+const Vector2 scene = {(SCREEN_W - sceneWidth) / 2, (SCREEN_H - sceneHeight) / 2};
+
+KeyboardKey lastKey = KEY_NULL;
+
+
 typedef struct Bomb{
     Rectangle pos;
     Rectangle explosion_right;
@@ -99,16 +110,6 @@ Vector2Int getIndex(float x, float y) {
     Vector2Int index = {indexX, indexY};
     return index;
 }
-
-//------------------------------------------------------------------------------------
-//Variáveis globais
-//------------------------------------------------------------------------------------
-const short int sceneWidth = TILESIZE * NUMTILES_W;
-const short int sceneHeight = TILESIZE * NUMTILES_H;
-
-const Vector2 scene = {(SCREEN_W - sceneWidth) / 2, (SCREEN_H - sceneHeight) / 2};
-
-KeyboardKey lastKey = KEY_NULL;
 
 short int mapa[NUMTILES_H][NUMTILES_W] = {{0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0},
                                           {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
@@ -307,28 +308,30 @@ void bombCollision(game *g) {
     }
 }
 
-/*
+
 void bombToBombCollision(game *g) {
-    for(int i = 0; i < g->player.num_bombs; i++) { 
-        if(g->player.bombs[i].isActive == 1) {
-            
-            if (fabs(g->player.bombs[i].time - GetTime()) > 3 && fabs(g->player.bombs[i].time - GetTime()) < 5) {
-                short int Collision = 0;
+    for(int i = 0; i < g->player.num_bombs; i++) {
+        for(int j = 0; j < g->player.num_bombs; j++) {
+            if(g->player.bombs[i].isActive == 1) {
+                
+                if (fabs(g->player.bombs[i].time - GetTime()) > 3 && fabs(g->player.bombs[i].time - GetTime()) < 5) {
+                    short int Collision = 0;
 
-                //Se colidir com algum retângulo de explosão, a variável Collision terá um valor positivo
-                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_right, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
-                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_left, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
-                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_up, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
-                Collision += CheckCollisionRecs(g->player.bombs[i].explosion_down, (Rectangle){g->player.pos.x, g->player.pos.y, g->player.size, g->player.size});
+                    //Se colidir com algum retângulo de explosão, a variável Collision terá um valor positivo
+                    Collision += CheckCollisionRecs(g->player.bombs[i].explosion_right, g->player.bombs[j].pos);
+                    Collision += CheckCollisionRecs(g->player.bombs[i].explosion_left, g->player.bombs[j].pos);
+                    Collision += CheckCollisionRecs(g->player.bombs[i].explosion_up, g->player.bombs[j].pos);
+                    Collision += CheckCollisionRecs(g->player.bombs[i].explosion_down, g->player.bombs[j].pos);
 
-                if(Collision) {
-                    g->player.life -= 1;
+                    if(Collision && (GetTime() - g->player.bombs[j].time) < 2.8 ) {
+                        g->player.bombs[j].time = GetTime() - 3;
+                    }
                 }
             }
         }
     }
 }
-*/
+
 
 //Spawna, explode e desativa as bombas
 void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
@@ -336,6 +339,7 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
     draw_bomb(g);
     bombDamage(g);
     bombCollision(g);
+    bombToBombCollision(g);
 
     
     if (IsKeyPressed(KEY_SPACE)) {
@@ -359,7 +363,7 @@ void update_bomb(game *g, short int mapa[][NUMTILES_W]) {
 
                 g->player.bombs[i].time = GetTime();
 
-                Vector2Int bombIndex = getIndex(g->pla yer.bombs[i].pos.x, g->player.bombs[i].pos.y);
+                Vector2Int bombIndex = getIndex(g->player.bombs[i].pos.x, g->player.bombs[i].pos.y);
 
                 g->player.bombs[i].indexBottom = bombIndex.y;
                 g->player.bombs[i].indexRight = bombIndex.x;
